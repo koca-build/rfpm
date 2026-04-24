@@ -1,0 +1,31 @@
+[package]
+name = "rfpm"
+version = "0.1.0"
+edition = "2024"
+description = "Build deb, rpm, and Arch Linux packages from Rust"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/hwittenborn/rfpm"
+keywords = ["deb", "rpm", "archlinux", "packaging", "linux"]
+categories = ["os::linux-apis", "command-line-utilities"]
+
+[dependencies]
+# RPM format
+rpm = "0.17"
+
+# DEB format (AR archive)
+ar = "0.9"
+
+# Shared: tar archives (deb data.tar, arch .pkg.tar)
+tar = "0.4"
+
+# Compression
+flate2 = "1"
+liblzma = { version = "0.3", features = ["static"] }
+zstd = { version = "0.13", features = ["zstdmt"] }
+
+# Temp files (rpm crate needs file paths)
+tempfile = "3"
+
+# Hashing
+md5 = "0.7"
+sha2 = "0.10"
