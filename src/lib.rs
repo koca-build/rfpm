@@ -191,6 +191,31 @@ impl Package {
         });
     }
 
+    /// Add a regular file with explicit Unix permissions and ownership.
+    ///
+    /// Use this when the file should be owned by a specific user/group
+    /// (e.g. files installed under fakeroot where `stat()` returns the
+    /// fakeroot-tracked owner).
+    pub fn add_file_with_ownership(
+        &mut self,
+        dest: impl Into<String>,
+        source: impl Into<Content>,
+        mode: u32,
+        owner: impl Into<String>,
+        group: impl Into<String>,
+    ) {
+        self.entries.push(Entry {
+            dest: dest.into(),
+            kind: EntryKind::File {
+                source: source.into(),
+                is_config: false,
+            },
+            mode: Some(mode),
+            owner: Some(owner.into()),
+            group: Some(group.into()),
+        });
+    }
+
     /// Add a configuration file that package managers treat specially.
     ///
     /// - **deb**: listed in `conffiles` — dpkg won't overwrite user edits on upgrade
