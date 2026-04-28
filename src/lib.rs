@@ -2,10 +2,14 @@
 //!
 //! ```no_run
 //! use std::fs::File;
-//! use rfpm::{Package, Arch};
+//! use rfpm::{Package, Arch, FileOptions};
 //!
 //! let mut pkg = Package::new("myapp", "1.0.0", Arch::Amd64, "My application");
-//! pkg.add_file_with_mode("/usr/bin/myapp", File::open("target/release/myapp").unwrap(), 0o755);
+//! pkg.add_file_with(
+//!     "/usr/bin/myapp",
+//!     File::open("target/release/myapp").unwrap(),
+//!     FileOptions { mode: 0o755, ..Default::default() },
+//! );
 //! pkg.add_config("/etc/myapp/config.toml", "# default config\n".to_string());
 //! pkg.depends.push("libc6".into());
 //!
@@ -152,68 +156,37 @@ impl Package {
         }
     }
 
-    /// Add a regular file to the package with default mode (0o644).
+    /// Add a regular file to the package with default mode (0o644) and root ownership.
     ///
     /// `dest` is the absolute path inside the package (e.g. `"/usr/share/myapp/data.txt"`).
     /// `source` is the file content — accepts [`File`](std::fs::File), [`Vec<u8>`],
     /// [`String`], [`Cursor`](std::io::Cursor), or any `Read + Seek` type.
     pub fn add_file(&mut self, dest: impl Into<String>, source: impl Into<Content>) {
-        self.entries.push(Entry {
-            dest: dest.into(),
-            kind: EntryKind::File {
-                source: source.into(),
-                is_config: false,
-            },
-            mode: Some(0o644),
-            owner: None,
-            group: None,
-        });
+        self.add_file_with(dest, source, FileOptions::default());
     }
 
-    /// Add a regular file with explicit Unix permissions.
+    /// Add a regular file with explicit [`FileOptions`] (mode, owner, group).
     ///
-    /// Use this for executables (`0o755`), restricted files (`0o600`), etc.
-    pub fn add_file_with_mode(
+    /// ```
+    /// # use rfpm::{Package, Arch, FileOptions};
+    /// # let mut pkg = Package::new("x", "1", Arch::Amd64, "x");
+    /// // Executable owned by root:
+    /// pkg.add_file_with("/usr/bin/x", "data".to_string(), FileOptions { mode: 0o755, ..Default::default() });
+    ///
+    /// // File with custom ownership:
+    /// pkg.add_file_with("/etc/app/cfg", "data".to_string(), FileOptions {
+    ///     owner: "appuser".into(),
+    ///     group: "appgroup".into(),
+    ///     ..Default::default()
+    /// });
+    /// ```
+    pub fn add_file_with(
         &mut self,
         dest: impl Into<String>,
         source: impl Into<Content>,
-        mode: u32,
+        opts: FileOptions,
     ) {
-        self.entries.push(Entry {
-            dest: dest.into(),
-            kind: EntryKind::File {
-                source: source.into(),
-                is_config: false,
-            },
-            mode: Some(mode),
-            owner: None,
-            group: None,
-        });
-    }
-
-    /// Add a regular file with explicit Unix permissions and ownership.
-    ///
-    /// Use this when the file should be owned by a specific user/group
-    /// (e.g. files installed under fakeroot where `stat()` returns the
-    /// fakeroot-tracked owner).
-    pub fn add_file_with_ownership(
-        &mut self,
-        dest: impl Into<String>,
-        source: impl Into<Content>,
-        mode: u32,
-        owner: impl Into<String>,
-        group: impl Into<String>,
-    ) {
-        self.entries.push(Entry {
-            dest: dest.into(),
-            kind: EntryKind::File {
-                source: source.into(),
-                is_config: false,
-            },
-            mode: Some(mode),
-            owner: Some(owner.into()),
-            group: Some(group.into()),
-        });
+        self.push_file(dest, source, opts, false);
     }
 
     /// Add a configuration file that package managers treat specially.
@@ -222,16 +195,7 @@ impl Package {
     /// - **rpm**: gets the `ConfigFile` flag — rpm prompts about conflicts during upgrade
     /// - **arch**: listed in the `backup` field of `.PKGINFO`
     pub fn add_config(&mut self, dest: impl Into<String>, source: impl Into<Content>) {
-        self.entries.push(Entry {
-            dest: dest.into(),
-            kind: EntryKind::File {
-                source: source.into(),
-                is_config: true,
-            },
-            mode: Some(0o644),
-            owner: None,
-            group: None,
-        });
+        self.push_file(dest, source, FileOptions::default(), true);
     }
 
     /// Add an explicit empty directory with default mode (0o755).
@@ -239,23 +203,40 @@ impl Package {
     /// Directories are created implicitly as parents of files, but this
     /// lets you create standalone directories (e.g. `"/var/lib/myapp"`).
     pub fn add_dir(&mut self, dest: impl Into<String>) {
-        self.entries.push(Entry {
-            dest: dest.into(),
-            kind: EntryKind::Directory,
-            mode: Some(0o755),
-            owner: None,
-            group: None,
-        });
+        self.push_dir(dest, 0o755);
     }
 
     /// Add an explicit empty directory with specific Unix permissions.
     pub fn add_dir_with_mode(&mut self, dest: impl Into<String>, mode: u32) {
+        self.push_dir(dest, mode);
+    }
+
+    fn push_file(
+        &mut self,
+        dest: impl Into<String>,
+        source: impl Into<Content>,
+        opts: FileOptions,
+        is_config: bool,
+    ) {
+        self.entries.push(Entry {
+            dest: dest.into(),
+            kind: EntryKind::File {
+                source: source.into(),
+                is_config,
+            },
+            mode: opts.mode,
+            owner: opts.owner,
+            group: opts.group,
+        });
+    }
+
+    fn push_dir(&mut self, dest: impl Into<String>, mode: u32) {
         self.entries.push(Entry {
             dest: dest.into(),
             kind: EntryKind::Directory,
-            mode: Some(mode),
-            owner: None,
-            group: None,
+            mode,
+            owner: "root".into(),
+            group: "root".into(),
         });
     }
 
@@ -272,9 +253,9 @@ impl Package {
             kind: EntryKind::Symlink {
                 target: target.into(),
             },
-            mode: None,
-            owner: None,
-            group: None,
+            mode: 0o777,
+            owner: "root".into(),
+            group: "root".into(),
         });
     }
 
@@ -321,14 +302,45 @@ impl Package {
     }
 }
 
+// --- FileOptions ---
+
+/// Options for file entries: permissions and ownership.
+///
+/// Use with [`Package::add_file_with`] to control mode and ownership.
+/// Fields default to `0o644` / `root:root` via [`Default`].
+///
+/// ```
+/// use rfpm::FileOptions;
+///
+/// let opts = FileOptions { mode: 0o755, ..Default::default() };
+/// ```
+pub struct FileOptions {
+    /// Unix file mode (e.g. `0o755`). Defaults to `0o644`.
+    pub mode: u32,
+    /// Owner username. Defaults to `"root"`.
+    pub owner: String,
+    /// Group name. Defaults to `"root"`.
+    pub group: String,
+}
+
+impl Default for FileOptions {
+    fn default() -> Self {
+        Self {
+            mode: 0o644,
+            owner: "root".into(),
+            group: "root".into(),
+        }
+    }
+}
+
 // --- Entry ---
 
 pub(crate) struct Entry {
     pub dest: String,
     pub kind: EntryKind,
-    pub mode: Option<u32>,
-    pub owner: Option<String>,
-    pub group: Option<String>,
+    pub mode: u32,
+    pub owner: String,
+    pub group: String,
 }
 
 pub(crate) enum EntryKind {

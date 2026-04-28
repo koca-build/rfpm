@@ -59,10 +59,8 @@ impl Content {
     /// Read content as a UTF-8 string, then seek back to the start.
     pub(crate) fn read_string(&mut self) -> io::Result<String> {
         let bytes = self.read_all()?;
-        String::from_utf8(bytes)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        String::from_utf8(bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
-
 }
 
 impl From<File> for Content {
