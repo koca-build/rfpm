@@ -61,19 +61,19 @@ impl Package {
 
             match &mut entry.kind {
                 EntryKind::Directory => {
-                    let mode = entry.mode.unwrap_or(0o755);
                     let mut header = tar::Header::new_gnu();
                     header.set_entry_type(tar::EntryType::Directory);
                     header.set_path(dest)?;
-                    header.set_mode(mode);
+                    header.set_mode(entry.mode);
                     header.set_size(0);
+                    set_owner(&mut header, &entry.owner, &entry.group);
                     header.set_cksum();
                     tw.append(&header, io::empty())?;
 
                     entries.push(MtreeEntry {
                         path: dest.to_string(),
                         kind: MtreeKind::Dir,
-                        mode: mode as i64,
+                        mode: entry.mode as i64,
                         time: 0,
                         size: 0,
                         md5: Vec::new(),
@@ -86,8 +86,9 @@ impl Package {
                     header.set_entry_type(tar::EntryType::Symlink);
                     header.set_path(dest)?;
                     header.set_link_name(target.as_str())?;
-                    header.set_mode(0o777);
+                    header.set_mode(entry.mode);
                     header.set_size(0);
+                    set_owner(&mut header, &entry.owner, &entry.group);
                     header.set_cksum();
                     tw.append(&header, io::empty())?;
 
@@ -104,13 +105,13 @@ impl Package {
                 }
                 EntryKind::File { source, is_config } => {
                     let data = source.read_all()?;
-                    let mode = entry.mode.unwrap_or(0o644);
 
                     let mut header = tar::Header::new_gnu();
                     header.set_entry_type(tar::EntryType::Regular);
                     header.set_path(dest)?;
-                    header.set_mode(mode);
+                    header.set_mode(entry.mode);
                     header.set_size(data.len() as u64);
+                    set_owner(&mut header, &entry.owner, &entry.group);
                     header.set_cksum();
                     tw.append(&header, data.as_slice())?;
 
@@ -124,7 +125,7 @@ impl Package {
                         } else {
                             MtreeKind::File
                         },
-                        mode: mode as i64,
+                        mode: entry.mode as i64,
                         time: 0,
                         size: data.len() as i64,
                         md5: md5_digest.to_vec(),
@@ -162,10 +163,7 @@ impl Package {
         write_kv(
             &mut buf,
             "pkgbase",
-            self.arch_linux
-                .pkgbase
-                .as_deref()
-                .unwrap_or(&self.name),
+            self.arch_linux.pkgbase.as_deref().unwrap_or(&self.name),
         );
         write_kv(&mut buf, "pkgver", &pkgver);
         write_kv(&mut buf, "pkgdesc", &pkgdesc);
@@ -202,7 +200,10 @@ impl Package {
 
         // Config files → backup entries
         for entry in &self.entries {
-            if let EntryKind::File { is_config: true, .. } = &entry.kind {
+            if let EntryKind::File {
+                is_config: true, ..
+            } = &entry.kind
+            {
                 let path = entry.dest.strip_prefix('/').unwrap_or(&entry.dest);
                 write_kv(&mut buf, "backup", path);
             }
@@ -235,10 +236,7 @@ impl Package {
     fn write_arch_install(&mut self, tw: &mut tar::Builder<impl Write>) -> Result<(), Error> {
         let mut install_buf = String::new();
 
-        let script_entries: &mut [(
-            &str,
-            &mut Option<crate::Content>,
-        )] = &mut [
+        let script_entries: &mut [(&str, &mut Option<crate::Content>)] = &mut [
             ("pre_install", &mut self.scripts.pre_install),
             ("post_install", &mut self.scripts.post_install),
             ("pre_remove", &mut self.scripts.pre_remove),
@@ -369,6 +367,13 @@ fn hex_encode(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
+fn set_owner(header: &mut tar::Header, owner: &str, group: &str) {
+    header.set_username(owner).ok();
+    header.set_groupname(group).ok();
+    header.set_uid(0);
+    header.set_gid(0);
+}
+
 fn is_valid_arch_name(name: &str) -> bool {
     if name.is_empty() {
         return false;
@@ -376,7 +381,6 @@ fn is_valid_arch_name(name: &str) -> bool {
     if name.starts_with('-') || name.starts_with('.') {
         return false;
     }
-    name.chars().all(|c| {
-        c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '+' || c == '-'
-    })
+    name.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '+' || c == '-')
 }

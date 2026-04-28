@@ -5,9 +5,10 @@
 //! 2. `control.tar.gz` — metadata, md5sums, conffiles, triggers, scripts
 //! 3. `data.tar.{gz,xz,zst}` — the actual package files
 
+use std::fmt::Write as _;
 use std::io::{self, Write};
 
-use crate::{DebCompression, DebTriggers, Entry, EntryKind, Error, Package};
+use crate::{DebCompression, DebTriggers, EntryKind, Error, Package};
 
 impl Package {
     /// Write a `.deb` package to the given writer.
@@ -52,9 +53,9 @@ impl Package {
                         let mut header = tar::Header::new_gnu();
                         header.set_entry_type(tar::EntryType::Directory);
                         header.set_path(&dest)?;
-                        header.set_mode(entry.mode.unwrap_or(0o755));
+                        header.set_mode(entry.mode);
                         header.set_size(0);
-                        set_owner(&mut header, entry);
+                        set_owner(&mut header, &entry.owner, &entry.group);
                         header.set_cksum();
                         tar.append(&header, io::empty())?;
                     }
@@ -63,9 +64,9 @@ impl Package {
                         header.set_entry_type(tar::EntryType::Symlink);
                         header.set_path(&dest)?;
                         header.set_link_name(target.as_str())?;
-                        header.set_mode(0o777);
+                        header.set_mode(entry.mode);
                         header.set_size(0);
-                        set_owner(&mut header, entry);
+                        set_owner(&mut header, &entry.owner, &entry.group);
                         header.set_cksum();
                         tar.append(&header, io::empty())?;
                     }
@@ -76,15 +77,14 @@ impl Package {
                         let mut header = tar::Header::new_gnu();
                         header.set_entry_type(tar::EntryType::Regular);
                         header.set_path(&dest)?;
-                        header.set_mode(entry.mode.unwrap_or(0o644));
+                        header.set_mode(entry.mode);
                         header.set_size(data.len() as u64);
-                        set_owner(&mut header, entry);
+                        set_owner(&mut header, &entry.owner, &entry.group);
                         header.set_cksum();
                         tar.append(&header, data.as_slice())?;
 
                         // md5sums: two spaces between hash and relative path
                         let rel_path = dest.strip_prefix("./").unwrap_or(&dest);
-                        use std::fmt::Write as _;
                         writeln!(&mut md5_lines, "{:x}  {}", digest, rel_path).unwrap();
 
                         inst_size += data.len() as u64;
@@ -189,7 +189,11 @@ impl Package {
         }
 
         // Description with continuation lines
-        push_field(&mut c, "Description", &format_deb_description(&self.description));
+        push_field(
+            &mut c,
+            "Description",
+            &format_deb_description(&self.description),
+        );
 
         // Custom fields
         for (key, value) in &self.deb.fields {
@@ -217,7 +221,10 @@ impl Package {
     fn render_deb_conffiles(&self) -> String {
         let mut out = String::new();
         for entry in &self.entries {
-            if let EntryKind::File { is_config: true, .. } = &entry.kind {
+            if let EntryKind::File {
+                is_config: true, ..
+            } = &entry.kind
+            {
                 let path = if entry.dest.starts_with('/') {
                     entry.dest.clone()
                 } else {
@@ -233,7 +240,10 @@ impl Package {
 
 // --- Helpers ---
 
-fn compress_deb_data(tar_bytes: &[u8], compression: DebCompression) -> Result<(Vec<u8>, String), Error> {
+fn compress_deb_data(
+    tar_bytes: &[u8],
+    compression: DebCompression,
+) -> Result<(Vec<u8>, String), Error> {
     let mut out = Vec::new();
     let name = match compression {
         DebCompression::Gzip => {
@@ -267,17 +277,9 @@ fn normalize_deb_path(dest: &str) -> String {
     format!("./{clean}")
 }
 
-fn set_owner(header: &mut tar::Header, entry: &Entry) {
-    if let Some(ref owner) = entry.owner {
-        header.set_username(owner).ok();
-    } else {
-        header.set_username("root").ok();
-    }
-    if let Some(ref group) = entry.group {
-        header.set_groupname(group).ok();
-    } else {
-        header.set_groupname("root").ok();
-    }
+fn set_owner(header: &mut tar::Header, owner: &str, group: &str) {
+    header.set_username(owner).ok();
+    header.set_groupname(group).ok();
     header.set_uid(0);
     header.set_gid(0);
 }

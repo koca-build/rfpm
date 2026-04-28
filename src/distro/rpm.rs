@@ -6,7 +6,6 @@ use std::io::Write;
 
 use crate::{EntryKind, Error, Package, RpmCompression};
 
-
 impl Package {
     /// Write an `.rpm` package to the given writer.
     ///
@@ -88,21 +87,12 @@ impl Package {
             match &mut entry.kind {
                 EntryKind::File { source, is_config } => {
                     let data = source.read_all()?;
-                    let mode = entry.mode.unwrap_or(0o644) as u16;
-
-                    // Write to a temp file since rpm crate needs a path.
+                    let mode = mode_u16(entry.mode)?;
                     let tmp = temp_file(&data)?;
 
-                    let mut opts =
-                        rpm::FileOptions::new(entry.dest.clone())
-                            .mode(rpm::FileMode::regular(mode));
-
-                    if let Some(ref owner) = entry.owner {
-                        opts = opts.user(owner);
-                    }
-                    if let Some(ref group) = entry.group {
-                        opts = opts.group(group);
-                    }
+                    let mut opts = rpm::FileOptions::new(entry.dest.clone())
+                        .mode(rpm::FileMode::regular(mode));
+                    opts = set_rpm_owner(opts, &entry.owner, &entry.group);
 
                     if *is_config {
                         opts = opts.is_config_noreplace();
@@ -113,38 +103,25 @@ impl Package {
                         .map_err(|e| Error::Rpm(e.to_string()))?;
                 }
                 EntryKind::Directory => {
-                    let mode = entry.mode.unwrap_or(0o755) as u16;
+                    let mode = mode_u16(entry.mode)?;
                     let tmp = temp_file(b"")?;
 
                     let mut opts =
-                        rpm::FileOptions::new(entry.dest.clone())
-                            .mode(rpm::FileMode::dir(mode));
-
-                    if let Some(ref owner) = entry.owner {
-                        opts = opts.user(owner);
-                    }
-                    if let Some(ref group) = entry.group {
-                        opts = opts.group(group);
-                    }
+                        rpm::FileOptions::new(entry.dest.clone()).mode(rpm::FileMode::dir(mode));
+                    opts = set_rpm_owner(opts, &entry.owner, &entry.group);
 
                     builder = builder
                         .with_file(tmp.path(), opts)
                         .map_err(|e| Error::Rpm(e.to_string()))?;
                 }
                 EntryKind::Symlink { target } => {
+                    let mode = mode_u16(entry.mode)?;
                     let tmp = temp_file(b"")?;
 
-                    let mut opts =
-                        rpm::FileOptions::new(entry.dest.clone())
-                            .mode(rpm::FileMode::symbolic_link(0o777))
-                            .symlink(target.clone());
-
-                    if let Some(ref owner) = entry.owner {
-                        opts = opts.user(owner);
-                    }
-                    if let Some(ref group) = entry.group {
-                        opts = opts.group(group);
-                    }
+                    let mut opts = rpm::FileOptions::new(entry.dest.clone())
+                        .mode(rpm::FileMode::symbolic_link(mode))
+                        .symlink(target.clone());
+                    opts = set_rpm_owner(opts, &entry.owner, &entry.group);
 
                     builder = builder
                         .with_file(tmp.path(), opts)
@@ -224,6 +201,19 @@ fn parse_rpm_dep(dep: &str) -> rpm::Dependency {
         }
     }
     rpm::Dependency::any(dep.trim())
+}
+
+fn mode_u16(mode: u32) -> Result<u16, Error> {
+    mode.try_into()
+        .map_err(|_| Error::Rpm(format!("mode {:#o} overflows u16", mode)))
+}
+
+fn set_rpm_owner(
+    opts: rpm::FileOptionsBuilder,
+    owner: &str,
+    group: &str,
+) -> rpm::FileOptionsBuilder {
+    opts.user(owner).group(group)
 }
 
 /// Create a temporary file with the given contents.

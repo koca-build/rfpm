@@ -1,6 +1,6 @@
 use std::io::Cursor;
 
-use rfpm::{Arch, DebCompression, Package};
+use rfpm::{Arch, DebCompression, FileOptions, Package};
 
 /// Create a test package with files, dirs, symlinks, config, and scripts.
 fn sample_package() -> Package {
@@ -12,7 +12,14 @@ fn sample_package() -> Package {
     pkg.depends.push("libc6".into());
     pkg.provides.push("testpkg-bin".into());
 
-    pkg.add_file_with_mode("/usr/bin/testpkg", b"#!/bin/sh\necho hello\n".to_vec(), 0o755);
+    pkg.add_file_with(
+        "/usr/bin/testpkg",
+        b"#!/bin/sh\necho hello\n".to_vec(),
+        FileOptions {
+            mode: 0o755,
+            ..Default::default()
+        },
+    );
     pkg.add_file("/usr/share/testpkg/data.txt", b"some data\n".to_vec());
     pkg.add_config("/etc/testpkg/config.conf", b"key=value\n".to_vec());
     pkg.add_dir("/var/lib/testpkg");
@@ -69,7 +76,11 @@ fn test_deb_roundtrip() {
     pkg.write_deb(&mut deb_bytes).expect("write_deb failed");
 
     // Should be a valid AR archive.
-    assert!(deb_bytes.len() > 100, "deb too small: {} bytes", deb_bytes.len());
+    assert!(
+        deb_bytes.len() > 100,
+        "deb too small: {} bytes",
+        deb_bytes.len()
+    );
 
     // AR magic: "!<arch>\n"
     assert_eq!(&deb_bytes[..8], b"!<arch>\n", "missing AR magic");
@@ -84,8 +95,14 @@ fn test_deb_roundtrip() {
         member_names.push(name);
     }
 
-    assert!(member_names.contains(&"debian-binary".to_string()), "missing debian-binary");
-    assert!(member_names.contains(&"control.tar.gz".to_string()), "missing control.tar.gz");
+    assert!(
+        member_names.contains(&"debian-binary".to_string()),
+        "missing debian-binary"
+    );
+    assert!(
+        member_names.contains(&"control.tar.gz".to_string()),
+        "missing control.tar.gz"
+    );
     assert!(
         member_names.iter().any(|n| n.starts_with("data.tar")),
         "missing data.tar.*"
@@ -151,12 +168,30 @@ fn test_deb_control_has_metadata() {
         "missing Package field. control_tar_paths={control_tar_paths:?}, control_gz_len={}, control_text={control_text:?}",
         control_gz.len(),
     );
-    assert!(control_text.contains("Version:"), "missing Version field in:\n{control_text}");
-    assert!(control_text.contains("Architecture: amd64"), "missing Architecture field in:\n{control_text}");
-    assert!(control_text.contains("Depends: libc6"), "missing Depends field in:\n{control_text}");
-    assert!(control_text.contains("Provides: testpkg-bin"), "missing Provides field in:\n{control_text}");
-    assert!(control_text.contains("Homepage: https://example.com"), "missing Homepage in:\n{control_text}");
-    assert!(control_text.contains("Description: A test package"), "missing Description in:\n{control_text}");
+    assert!(
+        control_text.contains("Version:"),
+        "missing Version field in:\n{control_text}"
+    );
+    assert!(
+        control_text.contains("Architecture: amd64"),
+        "missing Architecture field in:\n{control_text}"
+    );
+    assert!(
+        control_text.contains("Depends: libc6"),
+        "missing Depends field in:\n{control_text}"
+    );
+    assert!(
+        control_text.contains("Provides: testpkg-bin"),
+        "missing Provides field in:\n{control_text}"
+    );
+    assert!(
+        control_text.contains("Homepage: https://example.com"),
+        "missing Homepage in:\n{control_text}"
+    );
+    assert!(
+        control_text.contains("Description: A test package"),
+        "missing Description in:\n{control_text}"
+    );
     assert!(has_md5sums, "missing md5sums file");
     assert!(has_conffiles, "missing conffiles file");
     assert!(has_postinst, "missing postinst script");
@@ -189,11 +224,28 @@ fn test_deb_data_has_files() {
         paths.push(entry.path().unwrap().to_string_lossy().to_string());
     }
 
-    assert!(paths.iter().any(|p| p.contains("usr/bin/testpkg")), "missing binary");
-    assert!(paths.iter().any(|p| p.contains("usr/share/testpkg/data.txt")), "missing data file");
-    assert!(paths.iter().any(|p| p.contains("etc/testpkg/config.conf")), "missing config");
-    assert!(paths.iter().any(|p| p.contains("var/lib/testpkg")), "missing directory");
-    assert!(paths.iter().any(|p| p.contains("usr/bin/testpkg-link")), "missing symlink");
+    assert!(
+        paths.iter().any(|p| p.contains("usr/bin/testpkg")),
+        "missing binary"
+    );
+    assert!(
+        paths
+            .iter()
+            .any(|p| p.contains("usr/share/testpkg/data.txt")),
+        "missing data file"
+    );
+    assert!(
+        paths.iter().any(|p| p.contains("etc/testpkg/config.conf")),
+        "missing config"
+    );
+    assert!(
+        paths.iter().any(|p| p.contains("var/lib/testpkg")),
+        "missing directory"
+    );
+    assert!(
+        paths.iter().any(|p| p.contains("usr/bin/testpkg-link")),
+        "missing symlink"
+    );
 }
 
 #[test]
@@ -248,7 +300,11 @@ fn test_rpm_roundtrip() {
     let mut rpm_bytes = Vec::new();
     pkg.write_rpm(&mut rpm_bytes).expect("write_rpm failed");
 
-    assert!(rpm_bytes.len() > 100, "rpm too small: {} bytes", rpm_bytes.len());
+    assert!(
+        rpm_bytes.len() > 100,
+        "rpm too small: {} bytes",
+        rpm_bytes.len()
+    );
 
     // RPM magic: 0xED 0xAB 0xEE 0xDB
     assert_eq!(
@@ -267,7 +323,11 @@ fn test_arch_roundtrip() {
     let mut arch_bytes = Vec::new();
     pkg.write_arch(&mut arch_bytes).expect("write_arch failed");
 
-    assert!(arch_bytes.len() > 100, "arch pkg too small: {} bytes", arch_bytes.len());
+    assert!(
+        arch_bytes.len() > 100,
+        "arch pkg too small: {} bytes",
+        arch_bytes.len()
+    );
 
     // Decompress zstd and parse tar.
     let zr = zstd::Decoder::new(Cursor::new(&arch_bytes)).unwrap();
@@ -296,23 +356,46 @@ fn test_arch_roundtrip() {
 
     assert!(has_pkginfo, "missing .PKGINFO");
     assert!(has_mtree, "missing .MTREE");
-    assert!(has_install, "should have .INSTALL because postinst script was set");
+    assert!(
+        has_install,
+        "should have .INSTALL because postinst script was set"
+    );
 
     // Check .PKGINFO content.
-    assert!(pkginfo_text.contains("pkgname = testpkg"), "missing pkgname");
+    assert!(
+        pkginfo_text.contains("pkgname = testpkg"),
+        "missing pkgname"
+    );
     assert!(pkginfo_text.contains("pkgver = 1.0.0-1"), "missing pkgver");
     assert!(pkginfo_text.contains("arch = x86_64"), "missing arch");
     assert!(pkginfo_text.contains("depend = libc6"), "missing depend");
-    assert!(pkginfo_text.contains("provides = testpkg-bin"), "missing provides");
+    assert!(
+        pkginfo_text.contains("provides = testpkg-bin"),
+        "missing provides"
+    );
     assert!(pkginfo_text.contains("license = MIT"), "missing license");
 
     // Config files should be in backup.
-    assert!(pkginfo_text.contains("backup = etc/testpkg/config.conf"), "missing backup entry");
+    assert!(
+        pkginfo_text.contains("backup = etc/testpkg/config.conf"),
+        "missing backup entry"
+    );
 
     // Check files are present.
-    assert!(paths.iter().any(|p| p.contains("usr/bin/testpkg")), "missing binary");
-    assert!(paths.iter().any(|p| p.contains("usr/share/testpkg/data.txt")), "missing data");
-    assert!(paths.iter().any(|p| p.contains("etc/testpkg/config.conf")), "missing config");
+    assert!(
+        paths.iter().any(|p| p.contains("usr/bin/testpkg")),
+        "missing binary"
+    );
+    assert!(
+        paths
+            .iter()
+            .any(|p| p.contains("usr/share/testpkg/data.txt")),
+        "missing data"
+    );
+    assert!(
+        paths.iter().any(|p| p.contains("etc/testpkg/config.conf")),
+        "missing config"
+    );
 }
 
 #[test]
@@ -342,16 +425,29 @@ fn test_arch_mtree_is_gzipped() {
             std::io::Read::read_to_end(&mut entry, &mut mtree_gz).unwrap();
 
             // Gzip magic: 0x1F 0x8B
-            assert_eq!(&mtree_gz[..2], &[0x1F, 0x8B], ".MTREE should be gzip-compressed");
+            assert_eq!(
+                &mtree_gz[..2],
+                &[0x1F, 0x8B],
+                ".MTREE should be gzip-compressed"
+            );
 
             // Decompress and check content.
             let mut gz = flate2::read::GzDecoder::new(Cursor::new(&mtree_gz));
             let mut mtree_text = String::new();
             std::io::Read::read_to_string(&mut gz, &mut mtree_text).unwrap();
 
-            assert!(mtree_text.starts_with("#mtree\n"), "should start with #mtree");
-            assert!(mtree_text.contains(".PKGINFO"), ".PKGINFO should be first in mtree");
-            assert!(mtree_text.contains("sha256digest="), "should have sha256 hashes");
+            assert!(
+                mtree_text.starts_with("#mtree\n"),
+                "should start with #mtree"
+            );
+            assert!(
+                mtree_text.contains(".PKGINFO"),
+                ".PKGINFO should be first in mtree"
+            );
+            assert!(
+                mtree_text.contains("sha256digest="),
+                "should have sha256 hashes"
+            );
             assert!(mtree_text.contains("md5digest="), "should have md5 hashes");
         }
     }
@@ -382,4 +478,28 @@ fn test_multi_format_same_package() {
     assert_eq!(&rpm[..4], &[0xED, 0xAB, 0xEE, 0xDB], "rpm magic");
     // zstd magic: 0x28 0xB5 0x2F 0xFD
     assert_eq!(&arch[..4], &[0x28, 0xB5, 0x2F, 0xFD], "arch zstd magic");
+}
+
+// --- Mode overflow ---
+
+#[test]
+fn test_rpm_rejects_mode_overflow() {
+    let mut pkg = Package::new("testpkg", "1.0.0", Arch::Amd64, "test");
+    pkg.add_file_with(
+        "/usr/bin/x",
+        b"data".to_vec(),
+        FileOptions {
+            mode: 0o200000, // overflows u16
+            ..Default::default()
+        },
+    );
+
+    let mut buf = Vec::new();
+    let err = pkg.write_rpm(&mut buf);
+    assert!(err.is_err(), "should reject mode that overflows u16");
+    let msg = err.unwrap_err().to_string();
+    assert!(
+        msg.contains("overflows u16"),
+        "error should mention overflow, got: {msg}"
+    );
 }
