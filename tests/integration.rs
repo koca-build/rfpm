@@ -203,20 +203,20 @@ fn test_deb_data_has_files() {
     let mut deb_bytes = Vec::new();
     pkg.write_deb(&mut deb_bytes).unwrap();
 
-    // Extract data.tar.gz from the AR archive.
+    // Extract data.tar.xz from the AR archive.
     let mut archive = ar::Archive::new(Cursor::new(&deb_bytes));
-    let mut data_gz = Vec::new();
+    let mut data_xz = Vec::new();
     while let Some(entry) = archive.next_entry() {
         let mut entry = entry.unwrap();
         let name = String::from_utf8_lossy(entry.header().identifier()).to_string();
         if name.starts_with("data.tar") {
-            std::io::Read::read_to_end(&mut entry, &mut data_gz).unwrap();
+            std::io::Read::read_to_end(&mut entry, &mut data_xz).unwrap();
         }
     }
-    assert!(!data_gz.is_empty(), "data.tar.* not found");
+    assert!(!data_xz.is_empty(), "data.tar.* not found");
 
-    let gz = flate2::read::GzDecoder::new(Cursor::new(&data_gz));
-    let mut tar = tar::Archive::new(gz);
+    let xz = liblzma::read::XzDecoder::new(Cursor::new(&data_xz));
+    let mut tar = tar::Archive::new(xz);
     let mut paths: Vec<String> = Vec::new();
 
     for entry in tar.entries().unwrap() {
