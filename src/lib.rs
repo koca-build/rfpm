@@ -377,7 +377,7 @@ pub struct DebOptions {
     pub section: Option<String>,
     /// Package priority. Defaults to `"optional"`.
     pub priority: String,
-    /// Compression for `data.tar.*`. Defaults to [`DebCompression::Gzip`].
+    /// Compression for `data.tar.*`. Defaults to [`DebCompression::Xz`].
     pub compression: DebCompression,
     /// Pre-dependency packages (stronger than `depends`).
     pub predepends: Vec<String>,
@@ -396,7 +396,7 @@ impl Default for DebOptions {
         DebOptions {
             section: None,
             priority: "optional".into(),
-            compression: DebCompression::Gzip,
+            compression: DebCompression::Xz,
             predepends: Vec::new(),
             breaks: Vec::new(),
             triggers: DebTriggers::default(),
@@ -410,7 +410,6 @@ impl Default for DebOptions {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DebCompression {
     #[default]
-    Gzip,
     Xz,
     Zstd,
     None,

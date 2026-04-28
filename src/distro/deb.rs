@@ -246,12 +246,6 @@ fn compress_deb_data(
 ) -> Result<(Vec<u8>, String), Error> {
     let mut out = Vec::new();
     let name = match compression {
-        DebCompression::Gzip => {
-            let mut enc = flate2::write::GzEncoder::new(&mut out, flate2::Compression::new(9));
-            enc.write_all(tar_bytes)?;
-            enc.finish()?;
-            "data.tar.gz".to_string()
-        }
         DebCompression::Xz => {
             let mut enc = liblzma::write::XzEncoder::new(&mut out, 6);
             enc.write_all(tar_bytes)?;
@@ -259,7 +253,7 @@ fn compress_deb_data(
             "data.tar.xz".to_string()
         }
         DebCompression::Zstd => {
-            let mut enc = zstd::Encoder::new(&mut out, 19)?;
+            let mut enc = zstd::Encoder::new(&mut out, 3)?;
             enc.write_all(tar_bytes)?;
             enc.finish()?;
             "data.tar.zst".to_string()
