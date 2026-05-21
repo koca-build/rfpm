@@ -198,6 +198,16 @@ impl Package {
         self.push_file(dest, source, FileOptions::default(), true);
     }
 
+    /// Like [`add_config`](Self::add_config), but with explicit [`FileOptions`].
+    pub fn add_config_with(
+        &mut self,
+        dest: impl Into<String>,
+        source: impl Into<Content>,
+        opts: FileOptions,
+    ) {
+        self.push_file(dest, source, opts, true);
+    }
+
     /// Add an explicit empty directory with default mode (0o755).
     ///
     /// Directories are created implicitly as parents of files, but this
