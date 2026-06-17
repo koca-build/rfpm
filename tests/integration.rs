@@ -249,6 +249,71 @@ fn test_deb_data_has_files() {
 }
 
 #[test]
+fn test_deb_data_includes_parent_dirs() {
+    let mut pkg = sample_package();
+    let mut deb_bytes = Vec::new();
+    pkg.write_deb(&mut deb_bytes).unwrap();
+
+    // Pull data.tar.* out of the AR archive.
+    let mut archive = ar::Archive::new(Cursor::new(&deb_bytes));
+    let mut data_xz = Vec::new();
+    while let Some(entry) = archive.next_entry() {
+        let mut entry = entry.unwrap();
+        let name = String::from_utf8_lossy(entry.header().identifier()).to_string();
+        if name.starts_with("data.tar") {
+            std::io::Read::read_to_end(&mut entry, &mut data_xz).unwrap();
+        }
+    }
+    assert!(!data_xz.is_empty(), "data.tar.* not found");
+
+    let xz = liblzma::read::XzDecoder::new(Cursor::new(&data_xz));
+    let mut tar = tar::Archive::new(xz);
+
+    // Ordered list of (path, is_directory) as written to the archive.
+    let mut entries: Vec<(String, bool)> = Vec::new();
+    for entry in tar.entries().unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path().unwrap().to_string_lossy().to_string();
+        let is_dir = entry.header().entry_type() == tar::EntryType::Directory;
+        entries.push((path, is_dir));
+    }
+
+    // dpkg does not create missing parents itself, so every directory leading
+    // to a file/symlink must be present as a Directory entry. (Paths read back
+    // from the tar have the leading "./" normalized away.)
+    let is_dir_entry = |p: &str| entries.iter().any(|(path, is_dir)| *is_dir && path == p);
+    for parent in [
+        "usr",
+        "usr/bin",
+        "usr/share",
+        "usr/share/testpkg",
+        "etc",
+        "etc/testpkg",
+        "var",
+        "var/lib",
+    ] {
+        assert!(is_dir_entry(parent), "missing parent directory {parent}");
+    }
+
+    // A directory must be written before anything nested under it.
+    let pos = |p: &str| entries.iter().position(|(path, _)| path == p).unwrap();
+    assert!(pos("usr") < pos("usr/bin/testpkg"));
+    assert!(pos("usr/share") < pos("usr/share/testpkg/data.txt"));
+    assert!(pos("etc/testpkg") < pos("etc/testpkg/config.conf"));
+
+    // The explicitly-added directory is emitted once, not duplicated by the
+    // implicit-parent pass.
+    let explicit_dir_count = entries
+        .iter()
+        .filter(|(path, is_dir)| *is_dir && path == "var/lib/testpkg")
+        .count();
+    assert_eq!(
+        explicit_dir_count, 1,
+        "explicit directory should appear exactly once"
+    );
+}
+
+#[test]
 fn test_deb_compression_xz() {
     let mut pkg = Package::new("xztest", "1.0.0", Arch::Amd64, "xz test");
     pkg.deb.compression = DebCompression::Xz;
