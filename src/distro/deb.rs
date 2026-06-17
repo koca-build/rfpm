@@ -5,10 +5,12 @@
 //! 2. `control.tar.gz` — metadata, md5sums, conffiles, triggers, scripts
 //! 3. `data.tar.{gz,xz,zst}` — the actual package files
 
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::io::{self, Write};
+use std::path::Path;
 
-use crate::{DebCompression, DebTriggers, EntryKind, Error, Package};
+use crate::{DebCompression, DebTriggers, Entry, EntryKind, Error, Package};
 
 impl Package {
     /// Write a `.deb` package to the given writer.
@@ -45,6 +47,22 @@ impl Package {
 
         {
             let mut tar = tar::Builder::new(&mut tar_buf);
+
+            // dpkg does not create missing parent directories on its own (the
+            // extractors rpm and pacman use do), so every directory leading to
+            // a file or symlink must have its own entry in data.tar. Emit those
+            // implicit parents first, shallowest first, so a directory always
+            // precedes its contents.
+            for dir in implicit_parent_dirs(&self.entries) {
+                let mut header = tar::Header::new_gnu();
+                header.set_entry_type(tar::EntryType::Directory);
+                header.set_path(&dir)?;
+                header.set_mode(0o755);
+                header.set_size(0);
+                set_owner(&mut header, "root", "root");
+                header.set_cksum();
+                tar.append(&header, io::empty())?;
+            }
 
             for entry in &mut self.entries {
                 let dest = normalize_deb_path(&entry.dest);
@@ -269,6 +287,36 @@ fn compress_deb_data(
 fn normalize_deb_path(dest: &str) -> String {
     let clean = dest.strip_prefix('/').unwrap_or(dest);
     format!("./{clean}")
+}
+
+/// Collect the parent directories that must exist for `entries`, as normalized
+/// deb paths. Returned shallowest-first (lexicographic order places each parent
+/// before its descendants, since a parent is a path prefix of them).
+///
+/// Paths that are themselves explicit entries are skipped -- those carry their
+/// own mode/ownership and are written from the entry list directly.
+fn implicit_parent_dirs(entries: &[Entry]) -> Vec<String> {
+    let explicit: BTreeSet<String> = entries
+        .iter()
+        .map(|e| normalize_deb_path(&e.dest))
+        .collect();
+
+    let mut dirs: BTreeSet<String> = BTreeSet::new();
+    for entry in entries {
+        let dest = normalize_deb_path(&entry.dest);
+        // `ancestors()` yields the path itself first, then each parent up to the
+        // "." root. Skip the entry itself and the root, keeping the real dirs
+        // in between (those still carry the "./" prefix).
+        for ancestor in Path::new(&dest).ancestors().skip(1) {
+            let Some(dir) = ancestor.to_str() else {
+                continue;
+            };
+            if dir.starts_with("./") && !explicit.contains(dir) {
+                dirs.insert(dir.to_string());
+            }
+        }
+    }
+    dirs.into_iter().collect()
 }
 
 fn set_owner(header: &mut tar::Header, owner: &str, group: &str) {
