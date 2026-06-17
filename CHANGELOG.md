@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2](https://github.com/koca-build/rfpm/compare/v0.2.1...v0.2.2) - 2026-06-17
+
+### Fixed
+
+- emit parent directory entries in deb data.tar ([#8](https://github.com/koca-build/rfpm/pull/8))
+
 ## [0.2.1](https://github.com/koca-build/rfpm/compare/v0.2.0...v0.2.1) - 2026-05-21
 
 ### Added

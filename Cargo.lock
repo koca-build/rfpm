@@ -1498,7 +1498,7 @@ dependencies = [
 
 [[package]]
 name = "rfpm"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "ar",
  "flate2",
