@@ -56,12 +56,10 @@ impl Package {
             for dir in implicit_parent_dirs(&self.entries) {
                 let mut header = tar::Header::new_gnu();
                 header.set_entry_type(tar::EntryType::Directory);
-                header.set_path(&dir)?;
                 header.set_mode(0o755);
                 header.set_size(0);
                 set_owner(&mut header, "root", "root");
-                header.set_cksum();
-                tar.append(&header, io::empty())?;
+                tar.append_data(&mut header, &dir, io::empty())?;
             }
 
             for entry in &mut self.entries {
@@ -70,23 +68,18 @@ impl Package {
                     EntryKind::Directory => {
                         let mut header = tar::Header::new_gnu();
                         header.set_entry_type(tar::EntryType::Directory);
-                        header.set_path(&dest)?;
                         header.set_mode(entry.mode);
                         header.set_size(0);
                         set_owner(&mut header, &entry.owner, &entry.group);
-                        header.set_cksum();
-                        tar.append(&header, io::empty())?;
+                        tar.append_data(&mut header, &dest, io::empty())?;
                     }
                     EntryKind::Symlink { target } => {
                         let mut header = tar::Header::new_gnu();
                         header.set_entry_type(tar::EntryType::Symlink);
-                        header.set_path(&dest)?;
-                        header.set_link_name(target.as_str())?;
                         header.set_mode(entry.mode);
                         header.set_size(0);
                         set_owner(&mut header, &entry.owner, &entry.group);
-                        header.set_cksum();
-                        tar.append(&header, io::empty())?;
+                        tar.append_link(&mut header, &dest, target.as_str())?;
                     }
                     EntryKind::File { source, .. } => {
                         let data = source.read_all()?;
@@ -94,12 +87,10 @@ impl Package {
 
                         let mut header = tar::Header::new_gnu();
                         header.set_entry_type(tar::EntryType::Regular);
-                        header.set_path(&dest)?;
                         header.set_mode(entry.mode);
                         header.set_size(data.len() as u64);
                         set_owner(&mut header, &entry.owner, &entry.group);
-                        header.set_cksum();
-                        tar.append(&header, data.as_slice())?;
+                        tar.append_data(&mut header, &dest, data.as_slice())?;
 
                         // md5sums: two spaces between hash and relative path
                         let rel_path = dest.strip_prefix("./").unwrap_or(&dest);
