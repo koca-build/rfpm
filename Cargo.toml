@@ -20,7 +20,7 @@ tar = "0.4"
 
 # Compression
 flate2 = "1"
-liblzma = { version = "0.3", features = ["static"] }
+liblzma = { version = "0.3", features = ["static", "parallel"] }
 zstd = { version = "0.13", features = ["zstdmt"] }
 
 # Temp files (rpm crate needs file paths)

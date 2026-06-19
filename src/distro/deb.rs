@@ -265,7 +265,18 @@ fn compress_deb_data(
     let mut out = Vec::new();
     let name = match compression {
         DebCompression::Xz => {
-            let mut enc = liblzma::write::XzEncoder::new(&mut out, 6);
+            // Multithreaded xz across all cores; single-threaded xz -6 is
+            // otherwise the dominant packaging cost on large payloads.
+            let threads = std::thread::available_parallelism()
+                .map(|n| n.get() as u32)
+                .unwrap_or(1);
+            let stream = liblzma::stream::MtStreamBuilder::new()
+                .preset(6)
+                .threads(threads)
+                .check(liblzma::stream::Check::Crc64)
+                .encoder()
+                .map_err(|e| Error::Io(std::io::Error::other(e.to_string())))?;
+            let mut enc = liblzma::write::XzEncoder::new_stream(&mut out, stream);
             enc.write_all(tar_bytes)?;
             enc.finish()?;
             "data.tar.xz".to_string()
