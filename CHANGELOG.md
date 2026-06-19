@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3](https://github.com/koca-build/rfpm/compare/v0.2.2...v0.2.3) - 2026-06-19
+
+### Other
+
+- compress deb data.tar.xz with multithreaded xz ([#10](https://github.com/koca-build/rfpm/pull/10))
+
 ## [0.2.2](https://github.com/koca-build/rfpm/compare/v0.2.1...v0.2.2) - 2026-06-17
 
 ### Fixed
