@@ -186,16 +186,16 @@ impl Package {
         }
 
         for dep in &self.replaces {
-            write_kv(&mut buf, "replaces", dep);
+            write_kv(&mut buf, "replaces", &dep.to_pacman());
         }
         for dep in &self.conflicts {
-            write_kv(&mut buf, "conflict", dep);
+            write_kv(&mut buf, "conflict", &dep.to_pacman());
         }
         for dep in &self.provides {
-            write_kv(&mut buf, "provides", dep);
+            write_kv(&mut buf, "provides", &dep.to_pacman());
         }
         for dep in &self.depends {
-            write_kv(&mut buf, "depend", dep);
+            write_kv(&mut buf, "depend", &dep.to_pacman());
         }
 
         // Config files → backup entries
