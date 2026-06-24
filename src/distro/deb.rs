@@ -185,7 +185,11 @@ impl Package {
         c.push_str(&format!("Installed-Size: {}\n", inst_size / 1024));
 
         // Dependency fields
-        push_list(&mut c, "Replaces", self.replaces.iter().map(Relation::to_deb));
+        push_list(
+            &mut c,
+            "Replaces",
+            self.replaces.iter().map(Relation::to_deb),
+        );
         push_list(
             &mut c,
             "Provides",
@@ -202,7 +206,11 @@ impl Package {
             "Conflicts",
             self.conflicts.iter().map(Relation::to_deb),
         );
-        push_list(&mut c, "Breaks", self.deb.breaks.iter().map(Relation::to_deb));
+        push_list(
+            &mut c,
+            "Breaks",
+            self.deb.breaks.iter().map(Relation::to_deb),
+        );
 
         if let Some(ref hp) = self.homepage {
             push_field(&mut c, "Homepage", hp);
