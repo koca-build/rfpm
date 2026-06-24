@@ -3,6 +3,7 @@
 //! ```no_run
 //! use std::fs::File;
 //! use rfpm::{Package, Arch, FileOptions};
+//! use rfpm::relation::Relation;
 //!
 //! let mut pkg = Package::new("myapp", "1.0.0", Arch::Amd64, "My application");
 //! pkg.add_file_with(
@@ -11,7 +12,7 @@
 //!     FileOptions { mode: 0o755, ..Default::default() },
 //! );
 //! pkg.add_config("/etc/myapp/config.toml", "# default config\n".to_string());
-//! pkg.depends.push("libc6".into());
+//! pkg.depends.push(Relation::parse("libc6").unwrap());
 //!
 //! let mut out = File::create(pkg.deb_filename()).unwrap();
 //! pkg.write_deb(&mut out).unwrap();
@@ -20,6 +21,7 @@
 mod arch;
 mod content;
 mod distro;
+pub mod relation;
 
 pub use arch::Arch;
 pub use content::Content;
@@ -97,17 +99,13 @@ pub struct Package {
     pub vendor: Option<String>,
 
     /// Packages this package depends on at runtime.
-    pub depends: Vec<String>,
+    pub depends: Vec<relation::Relation>,
     /// Virtual packages this package provides.
-    pub provides: Vec<String>,
+    pub provides: Vec<relation::VirtualPackage>,
     /// Packages this package conflicts with.
-    pub conflicts: Vec<String>,
+    pub conflicts: Vec<relation::Relation>,
     /// Packages this package replaces/obsoletes.
-    pub replaces: Vec<String>,
-    /// Recommended (but not required) packages.
-    pub recommends: Vec<String>,
-    /// Suggested packages.
-    pub suggests: Vec<String>,
+    pub replaces: Vec<relation::Relation>,
 
     /// Shared lifecycle scripts (pre/post install/remove).
     pub scripts: Scripts,
@@ -146,8 +144,6 @@ impl Package {
             provides: Vec::new(),
             conflicts: Vec::new(),
             replaces: Vec::new(),
-            recommends: Vec::new(),
-            suggests: Vec::new(),
             scripts: Scripts::default(),
             deb: DebOptions::default(),
             rpm: RpmOptions::default(),
@@ -390,9 +386,9 @@ pub struct DebOptions {
     /// Compression for `data.tar.*`. Defaults to [`DebCompression::Xz`].
     pub compression: DebCompression,
     /// Pre-dependency packages (stronger than `depends`).
-    pub predepends: Vec<String>,
+    pub predepends: Vec<relation::Relation>,
     /// Packages that this package breaks.
-    pub breaks: Vec<String>,
+    pub breaks: Vec<relation::Relation>,
     /// dpkg trigger directives.
     pub triggers: DebTriggers,
     /// Custom fields added to the `control` file.

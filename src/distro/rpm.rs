@@ -4,6 +4,7 @@
 
 use std::io::Write;
 
+use crate::relation::{Op, Relation, VirtualPackage};
 use crate::{EntryKind, Error, Package, RpmCompression};
 
 impl Package {
@@ -64,22 +65,16 @@ impl Package {
 
         // Dependencies
         for dep in &self.depends {
-            builder = builder.requires(parse_rpm_dep(dep));
+            builder = builder.requires(rpm_relation(dep));
         }
         for dep in &self.provides {
-            builder = builder.provides(parse_rpm_dep(dep));
+            builder = builder.provides(rpm_provide(dep));
         }
         for dep in &self.conflicts {
-            builder = builder.conflicts(parse_rpm_dep(dep));
+            builder = builder.conflicts(rpm_relation(dep));
         }
         for dep in &self.replaces {
-            builder = builder.obsoletes(parse_rpm_dep(dep));
-        }
-        for dep in &self.recommends {
-            builder = builder.recommends(parse_rpm_dep(dep));
-        }
-        for dep in &self.suggests {
-            builder = builder.suggests(parse_rpm_dep(dep));
+            builder = builder.obsoletes(rpm_relation(dep));
         }
 
         // Files
@@ -183,24 +178,29 @@ impl Package {
 }
 
 /// Parse a dependency string like "name >= 1.0" into an rpm::Dependency.
-fn parse_rpm_dep(dep: &str) -> rpm::Dependency {
-    // Split on first operator, trying longest operators first.
-    let ops = [">=", "<=", ">>", "<<", ">", "<", "="];
-    for op in ops {
-        if let Some(idx) = dep.find(op) {
-            let name = dep[..idx].trim();
-            let version = dep[idx + op.len()..].trim();
-            return match op {
-                ">=" => rpm::Dependency::greater_eq(name, version),
-                "<=" => rpm::Dependency::less_eq(name, version),
-                ">>" | ">" => rpm::Dependency::greater(name, version),
-                "<<" | "<" => rpm::Dependency::less(name, version),
-                "=" => rpm::Dependency::eq(name, version),
-                _ => unreachable!(),
-            };
+/// Build an rpm dependency from a structured [`Relation`].
+fn rpm_relation(rel: &Relation) -> rpm::Dependency {
+    match &rel.constraint {
+        None => rpm::Dependency::any(&rel.name),
+        Some(c) => {
+            let (name, ver) = (&rel.name, &c.version);
+            match c.op {
+                Op::GreaterEqual => rpm::Dependency::greater_eq(name, ver),
+                Op::LessEqual => rpm::Dependency::less_eq(name, ver),
+                Op::Greater => rpm::Dependency::greater(name, ver),
+                Op::Less => rpm::Dependency::less(name, ver),
+                Op::Equal => rpm::Dependency::eq(name, ver),
+            }
         }
     }
-    rpm::Dependency::any(dep.trim())
+}
+
+/// Build an rpm provides capability from a [`VirtualPackage`].
+fn rpm_provide(prov: &VirtualPackage) -> rpm::Dependency {
+    match &prov.version {
+        None => rpm::Dependency::any(&prov.name),
+        Some(ver) => rpm::Dependency::eq(&prov.name, ver),
+    }
 }
 
 fn mode_u16(mode: u32) -> Result<u16, Error> {

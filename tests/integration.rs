@@ -1,5 +1,6 @@
 use std::io::Cursor;
 
+use rfpm::relation::{Relation, VirtualPackage};
 use rfpm::{Arch, DebCompression, FileOptions, Package};
 
 /// Create a test package with files, dirs, symlinks, config, and scripts.
@@ -9,8 +10,9 @@ fn sample_package() -> Package {
     pkg.homepage = Some("https://example.com".into());
     pkg.license = Some("MIT".into());
     pkg.maintainer = Some("Test User <test@example.com>".into());
-    pkg.depends.push("libc6".into());
-    pkg.provides.push("testpkg-bin".into());
+    pkg.depends.push(Relation::parse("libc6").unwrap());
+    pkg.provides
+        .push(VirtualPackage::parse("testpkg-bin").unwrap());
 
     pkg.add_file_with(
         "/usr/bin/testpkg",

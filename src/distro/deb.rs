@@ -10,6 +10,7 @@ use std::fmt::Write as _;
 use std::io::{self, Write};
 use std::path::Path;
 
+use crate::relation::{Relation, VirtualPackage};
 use crate::{DebCompression, DebTriggers, Entry, EntryKind, Error, Package};
 
 impl Package {
@@ -184,14 +185,24 @@ impl Package {
         c.push_str(&format!("Installed-Size: {}\n", inst_size / 1024));
 
         // Dependency fields
-        push_list(&mut c, "Replaces", &self.replaces);
-        push_list(&mut c, "Provides", &self.provides);
-        push_list(&mut c, "Pre-Depends", &self.deb.predepends);
-        push_list(&mut c, "Depends", &self.depends);
-        push_list(&mut c, "Recommends", &self.recommends);
-        push_list(&mut c, "Suggests", &self.suggests);
-        push_list(&mut c, "Conflicts", &self.conflicts);
-        push_list(&mut c, "Breaks", &self.deb.breaks);
+        push_list(&mut c, "Replaces", self.replaces.iter().map(Relation::to_deb));
+        push_list(
+            &mut c,
+            "Provides",
+            self.provides.iter().map(VirtualPackage::to_deb),
+        );
+        push_list(
+            &mut c,
+            "Pre-Depends",
+            self.deb.predepends.iter().map(Relation::to_deb),
+        );
+        push_list(&mut c, "Depends", self.depends.iter().map(Relation::to_deb));
+        push_list(
+            &mut c,
+            "Conflicts",
+            self.conflicts.iter().map(Relation::to_deb),
+        );
+        push_list(&mut c, "Breaks", self.deb.breaks.iter().map(Relation::to_deb));
 
         if let Some(ref hp) = self.homepage {
             push_field(&mut c, "Homepage", hp);
@@ -389,9 +400,10 @@ fn push_field(out: &mut String, key: &str, value: &str) {
     out.push('\n');
 }
 
-fn push_list(out: &mut String, key: &str, items: &[String]) {
-    if !items.is_empty() {
-        push_field(out, key, &items.join(", "));
+fn push_list(out: &mut String, key: &str, items: impl IntoIterator<Item = String>) {
+    let joined = items.into_iter().collect::<Vec<_>>().join(", ");
+    if !joined.is_empty() {
+        push_field(out, key, &joined);
     }
 }
 
